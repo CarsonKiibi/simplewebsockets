@@ -34,5 +34,5 @@ type Server struct {
 }
 
 func NewServer() *Server {
-
+	return NewServer()
 }
