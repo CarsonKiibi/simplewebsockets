@@ -31,11 +31,11 @@ func (fs Frames) FrameToBytes() []byte {
 		maskOffset := 0
 
 		if (f.PayloadLength >= 126) && (f.PayloadLength <= 65535) {
-			frameSize += 1
-			maskOffset += 1
+			frameSize += 2
+			maskOffset += 2
 		} else if f.PayloadLength > 65536 {
-			frameSize += 4
-			maskOffset += 4
+			frameSize += 8
+			maskOffset += 8 // i think this is wrong
 		}
 
 		currFrame := make([]byte, frameSize)
@@ -48,16 +48,55 @@ func (fs Frames) FrameToBytes() []byte {
 
 		if f.Mask {
 			currFrame[1] |= 0x80
+
+			currFrame[2] |= f.MaskKey[0]
+			currFrame[3] |= f.MaskKey[1]
+			currFrame[4] |= f.MaskKey[2]
+			currFrame[5] |= f.MaskKey[3]
 		}
 
-		if f.Mask {
-			currFrame[2+maskOffset] |= f.MaskKey[0]
-			currFrame[3+maskOffset] |= f.MaskKey[1]
-			currFrame[4+maskOffset] |= f.MaskKey[2]
-			currFrame[5+maskOffset] |= f.MaskKey[3]
+		payloadOffset := 0
+
+		if f.PayloadLength < 126 {
+			currFrame[1] |= byte(f.PayloadLength)
+		} else if (f.PayloadLength >= 126) && (f.PayloadLength <= 65535) {
+			currFrame[1] |= 0xef
+			if f.Mask {
+				payloadOffset += 4 
+			}
+			currFrame[2 + payloadOffset] = byte(f.PayloadLength >> 8)
+			currFrame[3 + payloadOffset] = byte(f.PayloadLength)
+		} else {
+			currFrame[1] |= 0xef
+			if f.Mask {
+				payloadOffset += 4 
+			}
+			currFrame[2 + payloadOffset] = byte(f.PayloadLength >> 56)
+			currFrame[3 + payloadOffset] = byte(f.PayloadLength >> 48)
+			currFrame[4 + payloadOffset] = byte(f.PayloadLength >> 40)
+			currFrame[5 + payloadOffset] = byte(f.PayloadLength >> 32)
+			currFrame[6 + payloadOffset] = byte(f.PayloadLength >> 24)
+			currFrame[7 + payloadOffset] = byte(f.PayloadLength >> 16)
+			currFrame[8 + payloadOffset] = byte(f.PayloadLength >> 8)
+			currFrame[9 + payloadOffset] = byte(f.PayloadLength)
 		}
 
-		// --- FIRST BYTE IS SET ---
+		totalOffset := maskOffset + payloadOffset
+		for i, v := range f.Payload {
+			currFrame[totalOffset + i] |= v
+		}
+	}
+	return []byte{}
+}
+
+// Turns payload (byte array) into frames
+func PayloadToFrames([]byte) []Frame {
+
+	return []Frame{}
+}
+func PrintBits() {
+
+}
 
 		// switch f.Opcode {
 		// case 0x0:
@@ -95,15 +134,3 @@ func (fs Frames) FrameToBytes() []byte {
 		// default:
 		// 	fmt.Println("Impossible Opcode")
 		// }
-	}
-	return []byte{}
-}
-
-// Turns payload (byte array) into frames
-func PayloadToFrames([]byte) []Frame {
-
-	return []Frame{}
-}
-func PrintBits() {
-
-}
