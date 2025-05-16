@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	//"github.com/carsonkiibi/websockets/server"
 )
 
 func main() {
@@ -11,14 +10,15 @@ func main() {
 	// anded := number | 0b1111
 	// fmt.Println(anded)
 
-	frameSize := 2 // at least 2 for header
-
-	currFrame := make([]byte, frameSize)
-		
-	if (true) {
-		currFrame[0] |= 0x80
+	myFrame := Frame{
+		FIN: true,
+		Opcode: 0x7,
+		Mask: true,
+		MaskKey: [4]byte{0x1, 0x2, 0x1, 0x2},
+		Payload: []byte{0x46, 0x65, 0x6c, 0x6c, 0x6f},
+		PayloadLength: 5,
 	}
-
-	currFrame[0] |= 0xf
-	fmt.Printf("%b", currFrame)
+		
+	bytes := myFrame.FrameToBytes()
+	fmt.Printf("%b", bytes)
 }
