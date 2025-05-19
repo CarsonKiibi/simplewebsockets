@@ -45,60 +45,60 @@ func (f Frame) FrameToBytes() []byte {
     frameSize += payloadLenBytes + maskBytes + int(f.PayloadLength)
     frame := make([]byte, frameSize)
     
-    // Set FIN and opcode
+    // set fin and opcode
     if f.FIN {
         frame[0] |= 0x80
     }
     frame[0] |= f.Opcode
     
-    // Set mask bit and payload length
+    // set mask bit
     if f.Mask {
         frame[1] |= 0x80
     }
     
-    // Handle payload length
+    // set payload length bits
     if f.PayloadLength < 126 {
         frame[1] |= byte(f.PayloadLength)
         payloadOffset := 2
         
-        // Add mask key if present
+        // add mask key if present
         if f.Mask {
             copy(frame[payloadOffset:payloadOffset+4], f.MaskKey[:])
             payloadOffset += 4
         }
         
-        // Copy payload
+        // copy payload
         copy(frame[payloadOffset:], f.Payload)
     } else if f.PayloadLength <= 65535 {
         frame[1] |= 126
         
-        // Add extended 16-bit length
+        // add extended 16-bit length
         frame[2] = byte(f.PayloadLength >> 8)
         frame[3] = byte(f.PayloadLength)
         payloadOffset := 4
         
-        // Add mask key if present
+        // add mask key if exists
         if f.Mask {
             copy(frame[payloadOffset:payloadOffset+4], f.MaskKey[:])
             payloadOffset += 4
         }
         
-        // Copy payload
+        // copy payload
         copy(frame[payloadOffset:], f.Payload)
     } else {
         frame[1] |= 127
         
-        // Add extended 64-bit length
+        // add extended 64-bit length
         binary.BigEndian.PutUint64(frame[2:10], uint64(f.PayloadLength))
         payloadOffset := 10
         
-        // Add mask key if present
+        // add mask key if exists
         if f.Mask {
             copy(frame[payloadOffset:payloadOffset+4], f.MaskKey[:])
             payloadOffset += 4
         }
         
-        // Copy payload
+        // copy payload
         copy(frame[payloadOffset:], f.Payload)
     }
     
@@ -110,43 +110,3 @@ func PayloadToFrames([]byte) []Frame {
 
 	return []Frame{}
 }
-func PrintBits() {
-
-}
-
-// switch f.Opcode {
-// case 0x0:
-// 	fmt.Println("0x0: Continue Frame")
-// case 0x1:
-// 	fmt.Println("0x1: Text Frame")
-// case 0x2:
-// 	fmt.Println("0x2: Binary Frame")
-// case 0x3:
-// 	fmt.Println("0x3: Reserved Frame")
-// case 0x4:
-// 	fmt.Println("0x4: Reserved Frame")
-// case 0x5:
-// 	fmt.Println("0x5: Reserved Frame")
-// case 0x6:
-// 	fmt.Println("0x6: Reserved Frame")
-// case 0x7:
-// 	fmt.Println("0x7: Reserved Frame")
-// case 0x8:
-// 	fmt.Println("0x8: Connection Closed")
-// case 0x9:
-// 	fmt.Println("0x9: Ping")
-// case 0xa:
-// 	fmt.Println("0xa: Pong")
-// case 0xb:
-// 	fmt.Println("0xb: Reserved control frame")
-// case 0xc:
-// 	fmt.Println("0xc: Reserved control frame")
-// case 0xd:
-// 	fmt.Println("0xd: Reserved control frame")
-// case 0xe:
-// 	fmt.Println("0xe: Reserved control frame")
-// case 0xf:
-// 	fmt.Println("0xf: Reserved control frame")
-// default:
-// 	fmt.Println("Impossible Opcode")
-// }
