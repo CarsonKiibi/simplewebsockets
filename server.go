@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"sync"
@@ -88,8 +90,23 @@ func (s *Server) handleConnection(c *Connection) {
 	}
 }
 
-func (s *Server) performHandshake(c net.Conn) error {
-	fmt.Print("Handshake simulation\n")
+func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
+	status := "HTTP/1.1 101 Switching Protocols"
+	upgrade := "websocket"
+	connection := "Upgrade"
+	var guid = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+
+	bytes := append(key, guid...)
+	hasher := sha1.New()
+	hasher.Write(bytes)
+	wsAccept := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+
+	req := fmt.Sprintf("%s\r\nUpgrade: %s\r\nConnection: %sSec-WebSocket-Accept: %s\r\n\r\n", status, upgrade, connection, wsAccept)
+	_, err := c.Write([]byte(req))
+	if err != nil {
+		fmt.Println("Error sending server handshake:", err)
+		return err
+	}
 	return nil
 }
 
@@ -113,7 +130,7 @@ func (s *Server) Listen(address string) error {
 		// set the handshake timeout
 		conn.SetDeadline(time.Now().Add(s.handeshakeTimeout))
 
-		if err := s.performHandshake(conn); err != nil {
+		if err := s.performServerHandshake(conn); err != nil {
 			conn.Close()
 			if s.onError != nil {
 				s.onError(nil, err)
