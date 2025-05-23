@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,6 +48,7 @@ func NewServer(options ...ServerOption) *Server {
 	s := &Server{
 		connections:    make(map[*Connection]bool),
 		maxMessageSize: 32 * 1024, // 32 kb
+		handeshakeTimeout: 30 * time.Second,
 		readTimeout:    120 * time.Second,
 		writeTimeout:   10 * time.Second,
 	}
@@ -86,7 +88,7 @@ func (s *Server) handleConnection(c *Connection) {
 			return
 		}
 
-		fmt.Printf("Message received: %s\n", string(c.readBuf[:len]))
+		c.onMessage(c.readBuf[:len])
 	}
 }
 
@@ -101,7 +103,7 @@ func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
 	hasher.Write(bytes)
 	wsAccept := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
-	req := fmt.Sprintf("%s\r\nUpgrade: %s\r\nConnection: %sSec-WebSocket-Accept: %s\r\n\r\n", status, upgrade, connection, wsAccept)
+	req := fmt.Sprintf("%s\r\nUpgrade: %s\r\nConnection: %s\r\nSec-WebSocket-Accept: %s\r\n\r\n", status, upgrade, connection, wsAccept)
 	_, err := c.Write([]byte(req))
 	if err != nil {
 		fmt.Println("Error sending server handshake:", err)
@@ -110,12 +112,29 @@ func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
 	return nil
 }
 
+func getWSKey(data []byte) (string, error) {
+	lines := strings.Split(string(data), "\r\n")
+    
+    for _, line := range lines {
+        if strings.HasPrefix(strings.ToLower(line), "sec-websocket-key:") {
+            parts := strings.SplitN(line, ":", 2)
+            if len(parts) == 2 {
+                return strings.TrimSpace(parts[1]), nil
+            }
+        }
+    }
+    
+    return "", fmt.Errorf("Sec-WebSocket-Key header not found")
+}
+
 // Starts listening for a server, and accepts incoming connections.
 func (s *Server) Listen(address string) error {
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("Listening on %s \n", address)
 
 	// begin connection loop
 	for {
@@ -127,10 +146,28 @@ func (s *Server) Listen(address string) error {
 			continue
 		}
 
-		// set the handshake timeout
+		fmt.Println("Connection got here")
+		
 		conn.SetDeadline(time.Now().Add(s.handeshakeTimeout))
+		hsBuf := make([]byte, 1024)
+		len, err := conn.Read(hsBuf)
 
-		if err := s.performServerHandshake(conn); err != nil {
+		if err != nil {
+			return err
+		}
+
+		req := hsBuf[:len]
+		
+		if !strings.HasPrefix(string(req), "GET ") {
+			return fmt.Errorf("client did not send handshake (not a GET http request)")
+		}
+
+		key, err := getWSKey(req)
+		if err != nil {
+			return err
+		}
+
+		if err := s.performServerHandshake(conn, []byte(key)); err != nil {
 			conn.Close()
 			if s.onError != nil {
 				s.onError(nil, err)
@@ -154,6 +191,7 @@ func (s *Server) Listen(address string) error {
 			s.onConnect(c)
 		}
 
+		fmt.Println("Handling new connection")
 		go s.handleConnection(c)
 	}
 }

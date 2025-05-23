@@ -20,7 +20,7 @@ func main() {
 
 	myServer := NewServer()
 
-	err := myServer.Listen("localhost:8888")
+	err := myServer.Listen("localhost:8080")
 	if err != nil {
 		panic(err)
 	}
