@@ -43,6 +43,21 @@ type Server struct {
 
 type ServerOption func(*Server)
 
+// OnConnect is called when a client first connects to the server succesfully (after the http handshake).
+func (s *Server) OnConnect(fn func(*Connection)) {
+    s.onConnect = fn
+}
+
+// OnDisconnect is called after a clean disconnect (no error has occured and the server and client have completed a closing handshake).
+func (s *Server) OnDisconnect(fn func(*Connection)) {
+    s.onDisconnect = fn
+}
+
+// OnError is called 
+func (s *Server) OnError(fn func(*Connection, error)) {
+    s.onError = fn
+}
+
 // Creates a new server with options. Default values are maxMessageSize = 32 kb, readTimeout = 120 seconds, writeTimeout = 10 seconds.
 func NewServer(options ...ServerOption) *Server {
 	s := &Server{
@@ -81,10 +96,18 @@ func WithWriteTimeout(seconds uint16) ServerOption {
 	}
 }
 
+// Handles each connection (called as go func)
+// need better error handling 
 func (s *Server) handleConnection(c *Connection) {
 	for {
 		len, err := c.conn.Read(c.readBuf)
 		if err != nil {
+			if s.onError != nil {
+				s.onError(c, err)
+			}
+			s.connectionsMx.Lock()
+			delete(s.connections, c)
+			s.connectionsMx.Unlock()
 			return
 		}
 
@@ -104,6 +127,7 @@ func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
 	wsAccept := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	req := fmt.Sprintf("%s\r\nUpgrade: %s\r\nConnection: %s\r\nSec-WebSocket-Accept: %s\r\n\r\n", status, upgrade, connection, wsAccept)
+
 	_, err := c.Write([]byte(req))
 	if err != nil {
 		fmt.Println("Error sending server handshake:", err)
@@ -112,7 +136,7 @@ func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
 	return nil
 }
 
-func getWSKey(data []byte) (string, error) {
+func getWebSocketKey(data []byte) (string, error) {
 	lines := strings.Split(string(data), "\r\n")
     
     for _, line := range lines {
@@ -162,7 +186,7 @@ func (s *Server) Listen(address string) error {
 			return fmt.Errorf("client did not send handshake (not a GET http request)")
 		}
 
-		key, err := getWSKey(req)
+		key, err := getWebSocketKey(req)
 		if err != nil {
 			return err
 		}
