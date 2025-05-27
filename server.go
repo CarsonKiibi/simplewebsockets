@@ -31,6 +31,7 @@ type Server struct {
 	connectionsMx sync.RWMutex
 
 	maxMessageSize int64
+	maxFrameSize int64
 
 	handeshakeTimeout time.Duration
 	readTimeout       time.Duration
@@ -58,11 +59,13 @@ func (s *Server) OnError(fn func(*Connection, error)) {
     s.onError = fn
 }
 
-// Creates a new server with options. Default values are maxMessageSize = 32 kb, readTimeout = 120 seconds, writeTimeout = 10 seconds.
+// Creates a new server with options. Default values are maxMessageSize = 32 kb, maxFrameSize = 16kb, readTimeout = 120 seconds, writeTimeout = 10 seconds. 
+// Large message/frame sizes may put the application at higher risk of Denial-of-Service attacks.
 func NewServer(options ...ServerOption) *Server {
 	s := &Server{
 		connections:    make(map[*Connection]bool),
 		maxMessageSize: 32 * 1024, // 32 kb
+		maxFrameSize: 16 * 1024, // 16 kb
 		handeshakeTimeout: 30 * time.Second,
 		readTimeout:    120 * time.Second,
 		writeTimeout:   10 * time.Second,
@@ -113,6 +116,12 @@ func (s *Server) handleConnection(c *Connection) {
 
 		c.onMessage(c.readBuf[:len])
 	}
+}
+
+func handleFrame(frame []byte) ([]byte, bool) {
+	isFin := (frame[0] & 0x80) > 0
+
+	return []byte{}, isFin
 }
 
 func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
