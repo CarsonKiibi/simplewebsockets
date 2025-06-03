@@ -118,12 +118,6 @@ func (s *Server) handleConnection(c *Connection) {
 	}
 }
 
-func handleFrame(frame []byte) ([]byte, bool) {
-	isFin := (frame[0] & 0x80) > 0
-
-	return []byte{}, isFin
-}
-
 func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
 	status := "HTTP/1.1 101 Switching Protocols"
 	upgrade := "websocket"

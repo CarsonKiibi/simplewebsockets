@@ -106,7 +106,16 @@ func (f Frame) FrameToBytes() []byte {
 }
 
 // Turns payload (byte array) into frames
-func PayloadToFrames([]byte) []Frame {
+func PayloadToFrame(payload []byte) Frame {
+    frame := Frame{}
 
-	return []Frame{}
+    // check if FIN 
+    if payload[0] & 0x80 == 1 {
+        frame.FIN = true
+    }
+
+    // set opcode
+    frame.Opcode = payload[0] & 0x0F
+
+	return frame
 }
