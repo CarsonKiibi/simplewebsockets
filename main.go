@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 func main() {
 	// server.PrintBits()
 	// number := 0
@@ -14,14 +16,20 @@ func main() {
 	// 	Payload: []byte{0x46, 0x65, 0x6c, 0x6c, 0x6f},
 	// 	PayloadLength: 5,
 	// }
-		
+
 	// bytes := myFrame.FrameToBytes()
 	// fmt.Printf("%b", bytes)
 
-	myServer := NewServer()
+	bs := []byte{0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58}
 
-	err := myServer.Listen("localhost:8080")
-	if err != nil {
-		panic(err)
-	}
+	res, _ := BytesToFrame(bs)
+
+	fmt.Println(res)
+
+	// myServer := NewServer()
+
+	// err := myServer.Listen("localhost:8080")
+	// if err != nil {
+	// 	panic(err)
+	// }
 }

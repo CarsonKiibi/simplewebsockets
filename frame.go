@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+    "fmt"
 )
 
 // must be encoded as raw bytes before being sent over tcp
@@ -105,17 +106,73 @@ func (f Frame) FrameToBytes() []byte {
     return frame
 }
 
-// Turns payload (byte array) into frames
-func PayloadToFrame(payload []byte) Frame {
-    frame := Frame{}
+// BytesToFrame converts raw TCP bytes into a WebSocket Frame struct.
+func BytesToFrame(data []byte) (*Frame, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("frame too short: need at least 2 bytes, got %d", len(data))
+	}
 
-    // check if FIN 
-    if payload[0] & 0x80 == 1 {
-        frame.FIN = true
-    }
+	frame := &Frame{}
 
-    // set opcode
-    frame.Opcode = payload[0] & 0x0F
+	// parse first byte -> FIN (1 bit) + RSV (3 bit) + opcode (4 bit)
+	firstByte := data[0]
+	frame.FIN = (firstByte & 0x80) != 0  // check fin bit
+	frame.Opcode = firstByte & 0x0F      // check opcode bits
 
-	return frame
+	// parse second byte -> mask (1 bit) + payload length (7 bits)
+	secondByte := data[1]
+	frame.Mask = (secondByte & 0x80) != 0  // check mask bit (boolean)
+	payloadLen := secondByte & 0x7F        // check len bits
+	
+	offset := 2 // variable offset past this point
+
+	// find payload length
+	switch {
+	case payloadLen < 126:
+		frame.PayloadLength = int64(payloadLen)
+		
+	case payloadLen == 126:
+		// 2 more bytes contain length
+		if len(data) < offset+2 {
+			return nil, fmt.Errorf("frame too short for 16-bit length")
+		}
+		frame.PayloadLength = int64(binary.BigEndian.Uint16(data[offset : offset+2]))
+		offset += 2
+		
+	case payloadLen == 127:
+        // 8 more bytes contain length
+		if len(data) < offset+8 {
+			return nil, fmt.Errorf("frame too short for 64-bit length")
+		}
+		frame.PayloadLength = int64(binary.BigEndian.Uint64(data[offset : offset+8]))
+		offset += 8
+	}
+
+	// get mask key if present
+	if frame.Mask {
+		if len(data) < offset+4 {
+			return nil, fmt.Errorf("frame too short for mask key")
+		}
+		copy(frame.MaskKey[:], data[offset:offset+4])
+		offset += 4
+	}
+
+	// check if actual payload length is expected based on provided length
+	if len(data) < offset+int(frame.PayloadLength) {
+		return nil, fmt.Errorf("frame too short for payload: expected %d bytes, got %d", 
+			offset+int(frame.PayloadLength), len(data))
+	}
+
+	// extract and unmask payload if necessary
+	frame.Payload = make([]byte, frame.PayloadLength)
+	copy(frame.Payload, data[offset:offset+int(frame.PayloadLength)])
+	
+	if frame.Mask {
+		// unmask payload
+		for i := range frame.Payload {
+			frame.Payload[i] ^= frame.MaskKey[i%4]
+		}
+	}
+
+	return frame, nil
 }
