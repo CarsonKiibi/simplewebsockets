@@ -221,8 +221,6 @@ func (s *Server) Listen(address string) error {
 			}
 			continue
 		}
-
-		fmt.Println("Connection got here")
 		
 		conn.SetDeadline(time.Now().Add(s.handeshakeTimeout))
 		hsBuf := make([]byte, 1024)
