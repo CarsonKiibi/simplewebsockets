@@ -3,33 +3,37 @@ package main
 import "fmt"
 
 func main() {
-	// server.PrintBits()
-	// number := 0
-	// anded := number | 0b1111
-	// fmt.Println(anded)
+	myServer := NewServer()
 
-	// myFrame := Frame{
-	// 	FIN: true,
-	// 	Opcode: 0x7,
-	// 	Mask: true,
-	// 	MaskKey: [4]byte{0x1, 0x2, 0x1, 0x2},
-	// 	Payload: []byte{0x46, 0x65, 0x6c, 0x6c, 0x6f},
-	// 	PayloadLength: 5,
-	// }
+	//onConnect handler
+	myServer.OnConnect(func(c *Connection) {
+		fmt.Println("Client connected")
+		
+		// onmessage handler
+		c.onMessage = func(data []byte) {
+			fmt.Printf("Received message: %s\n", string(data))
+			
+			// need to implement sending
+			fmt.Printf("Would relay: %s\n", string(data))
+		}
+		
+		// close handler
+		c.onClose = func(reason []byte) {
+			fmt.Printf("Closed for reason: %s\n", string(reason))
+		}
+	})
 
-	// bytes := myFrame.FrameToBytes()
-	// fmt.Printf("%b", bytes)
+	myServer.OnDisconnect(func(c *Connection) {
+		fmt.Println("Client disconnected cleanly")
+	})
 
-	bs := []byte{0x8a, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58}
+	myServer.OnError(func(c *Connection, err error) {
+		fmt.Printf("Connection error: %v\n", err)
+	})
 
-	res, _ := BytesToFrame(bs)
-
-	fmt.Println(res)
-
-	// myServer := NewServer()
-
-	// err := myServer.Listen("localhost:8080")
-	// if err != nil {
-	// 	panic(err)
-	// }
+	fmt.Println("Starting WebSocket server...")
+	err := myServer.Listen("localhost:8080")
+	if err != nil {
+		panic(err)
+	}
 }

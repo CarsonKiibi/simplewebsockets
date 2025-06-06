@@ -15,10 +15,8 @@ type Connection struct {
 	conn    net.Conn
 	writeMx sync.Mutex
 
-	closed bool
-
 	onMessage func([]byte)
-	onClose   func()
+	onClose   func([]byte)
 
 	readBuf  []byte
 	writeBuf []byte
@@ -102,8 +100,9 @@ func WithWriteTimeout(seconds uint16) ServerOption {
 // Handles each connection (called as go func)
 // need better error handling 
 func (s *Server) handleConnection(c *Connection) {
+	msg := make([]byte, 0)
 	for {
-		len, err := c.conn.Read(c.readBuf)
+		n, err := c.conn.Read(c.readBuf)
 		if err != nil {
 			if s.onError != nil {
 				s.onError(c, err)
@@ -114,8 +113,58 @@ func (s *Server) handleConnection(c *Connection) {
 			return
 		}
 
-		c.onMessage(c.readBuf[:len])
+		fr, err := BytesToFrame(c.readBuf[:n])
+
+		if err != nil {
+			return
+		}
+
+		switch fr.Opcode {
+		case 0x0: // continue
+			if len(msg) == 0 {
+				fmt.Println("Continue frame with no previous text/binary frame.")
+				return
+			}
+			bs := fr.Payload
+			msg = append(msg, bs...)
+		case 0x1: // text frame
+			if len(msg) > 0 {
+				fmt.Println("Text frame received after a previous frame from the same message.")
+			}
+			bs := fr.Payload
+			msg = append(msg, bs...)
+		case 0x2: // binary frame
+			if len(msg) > 0 {
+				fmt.Println("Binary frame received after a previous frame from the same message.")
+			}
+			bs := fr.Payload
+			msg = append(msg, bs...)
+		// 0x3-7 reserved for further non-control frames
+		case 0x8:
+			c.onClose(fr.Payload) // send close reason 
+			sendCloseFrame(c)
+			c.conn.Close()
+			return
+		case 0x9:
+			//ping
+		case 0xA: 
+			// pong
+		// 0xB-F reserved for further control frames
+		default:
+			fmt.Println("Reserved opcode")
+		}
+
+		if fr.FIN {
+			c.onMessage(msg)
+			msg = msg[:0] // set slice back to 0 after we handle the message
+		}
 	}
+}
+
+func sendCloseFrame(c *Connection) {
+	c.writeMx.Lock()
+	fmt.Printf("Need to send close frame!")
+	c.writeMx.Unlock()
 }
 
 func (s *Server) performServerHandshake(c net.Conn, key []byte) error {
