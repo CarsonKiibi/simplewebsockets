@@ -161,6 +161,29 @@ func (s *Server) handleConnection(c *Connection) {
 	}
 }
 
+// TODO
+func textToFrames(t string) []Frame {
+	
+	return []Frame{}
+}
+
+// TODO
+func binaryToFrames(b []byte) []Frame {
+
+	return []Frame{}
+}
+
+// TODO
+func sendTextMessage(c *Connection, msg string, fs int) error {
+
+	return nil
+}
+
+// TODO
+func sendBinaryMessage(c *Connection, b []byte, fs int) error {
+	return nil
+}
+
 func sendCloseFrame(c *Connection) {
 	c.writeMx.Lock()
 	fmt.Printf("Need to send close frame!")
