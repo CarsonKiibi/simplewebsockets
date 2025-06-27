@@ -14,7 +14,7 @@ func main() {
 			fmt.Printf("Received message: %s\n", string(data))
 			
 			// need to implement sending
-			fmt.Printf("Would relay: %s\n", string(data))
+			c.SendTextMessageBuffered(string(data), 4)
 		}
 		
 		// close handler

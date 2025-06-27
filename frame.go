@@ -65,7 +65,7 @@ func (f Frame) FrameToBytes() []byte {
 
 		// add mask key if present
 		if f.Mask {
-			copy(frame[payloadOffset:payloadOffset+4], f.MaskKey[:])
+			copy(frame[payloadOffset:payloadOffset + 4], f.MaskKey[:])
 			payloadOffset += 4
 		}
 
@@ -134,18 +134,18 @@ func BytesToFrame(data []byte) (*Frame, error) {
 
 	case payloadLen == 126:
 		// 2 more bytes contain length
-		if len(data) < offset+2 {
+		if len(data) < offset + 2 {
 			return nil, fmt.Errorf("frame too short for 16-bit length")
 		}
-		frame.PayloadLength = int64(binary.BigEndian.Uint16(data[offset : offset+2]))
+		frame.PayloadLength = int64(binary.BigEndian.Uint16(data[offset : offset + 2]))
 		offset += 2
 
 	case payloadLen == 127:
 		// 8 more bytes contain length
-		if len(data) < offset+8 {
+		if len(data) < offset + 8 {
 			return nil, fmt.Errorf("frame too short for 64-bit length")
 		}
-		frame.PayloadLength = int64(binary.BigEndian.Uint64(data[offset : offset+8]))
+		frame.PayloadLength = int64(binary.BigEndian.Uint64(data[offset : offset + 8]))
 		offset += 8
 	}
 
@@ -154,7 +154,7 @@ func BytesToFrame(data []byte) (*Frame, error) {
 		if len(data) < offset+4 {
 			return nil, fmt.Errorf("frame too short for mask key")
 		}
-		copy(frame.MaskKey[:], data[offset:offset+4])
+		copy(frame.MaskKey[:], data[offset:offset + 4])
 		offset += 4
 	}
 
@@ -166,21 +166,17 @@ func BytesToFrame(data []byte) (*Frame, error) {
 
 	// extract and unmask payload if necessary
 	frame.Payload = make([]byte, frame.PayloadLength)
-	copy(frame.Payload, data[offset:offset+int(frame.PayloadLength)])
+	copy(frame.Payload, data[offset:offset + int(frame.PayloadLength)])
 
 	if frame.Mask {
 		// unmask payload
 		for i := range frame.Payload {
-			frame.Payload[i] ^= frame.MaskKey[i%4]
+			frame.Payload[i] ^= frame.MaskKey[i % 4]
 		}
 	}
 
 	return frame, nil
 }
-
-
-
-type Opcode string
 
 func NewFrame[T string | []byte](opcode byte, data T, isFin bool, masked bool, maskKey [4]byte) Frame {
 	var payload []byte
@@ -208,24 +204,86 @@ func NewFrame[T string | []byte](opcode byte, data T, isFin bool, masked bool, m
 	}
 }
 
-// TODO for sendings msgs
-func msgToFrames[M string | []byte](msg M) []Frame {
+
+// Converts a text or binary message 
+func msgToFrames[M string | []byte](msg M, fs int) []Frame {
+    if fs <= 0 {
+        panic("frame size must be positive")
+    }
     
-    return []Frame{}
+    msgLen := len(msg)
+    if msgLen == 0 {
+        // Return single empty frame
+        var opcode byte
+        switch any(msg).(type) {
+        case string:
+            opcode = 1 // Text frame
+        case []byte:
+            opcode = 2 // Binary frame
+        }
+        
+        return []Frame{{
+            FIN:           true,
+            Opcode:        opcode,
+            Mask:          false,
+            MaskKey:       [4]byte{},
+            Payload:       []byte{},
+            PayloadLength: 0,
+        }}
+    }
+
+    frameCount := (msgLen + fs - 1) / fs // ceiling division
+    frames := make([]Frame, 0, frameCount) // allocate for frames
+
+    var opcode byte
+    switch any(msg).(type) {
+    case string:
+        opcode = 1 // Text frame
+    case []byte:
+        opcode = 2 // Binary frame
+    }
+
+	// convert message to bytes for processing
+    var msgBytes []byte
+    switch m := any(msg).(type) {
+    case string:
+        msgBytes = []byte(m)
+    case []byte:
+        msgBytes = m
+    }
+
+    for i := 0; i < frameCount; i++ {
+        start := i * fs
+        end := start + fs
+        if end > msgLen {
+            end = msgLen
+        }
+
+        payload := msgBytes[start:end]
+        isLastFrame := (i == frameCount-1)
+        
+        // first frame has opcode, rest use continuation frame
+        frameOpcode := opcode
+        if i > 0 {
+            frameOpcode = 0 // Continuation frame
+        }
+
+        frame := Frame{
+            FIN:           isLastFrame,
+            Opcode:        frameOpcode,
+            Mask:          false, //server-to-client need not be masked (maybe change to work for both tho later)
+            MaskKey:       [4]byte{},
+            Payload:       payload,
+            PayloadLength: int64(len(payload)),
+        }
+
+        frames = append(frames, frame)
+    }
+
+    return frames
 }
 
-// TODO
-// fs frame size
-func (c *Connection) sendBinaryMessage(msg []byte, fs int) error {
-
-	return nil
-}
-
-func (c *Connection) sendTextMessage(msg string, fs int) error {
-
-	return nil
-}
-
+// Does a buffered write to the connection with frames.
 func (c *Connection) bufferedWrite(frames []Frame) error {
 	var buf bytes.Buffer
 	for _, frame := range frames {
@@ -235,6 +293,7 @@ func (c *Connection) bufferedWrite(frames []Frame) error {
 	return err
 }
 
+// Does a streamed write to the connection with frames.
 func (c *Connection) streamedWrite(frames []Frame) error {
 	for _, frame := range frames {
 		if _, err := c.conn.Write(frame.FrameToBytes()); err != nil {
@@ -242,4 +301,40 @@ func (c *Connection) streamedWrite(frames []Frame) error {
 		}
 	}
 	return nil
+}
+
+// Sends a binary message with the specified frame size. All frames of the message are first written to a buffer, 
+// then sent in a single TCP write to the connection. Also see "SendBinaryMessageStreamed"
+func (c *Connection) SendBinaryMessageBuffered(msg []byte, fs int) error {
+    frames := msgToFrames(msg, fs)
+    c.writeMx.Lock()
+    defer c.writeMx.Unlock()
+    return c.bufferedWrite(frames)
+}
+
+// Sends a binary message with the specified frame size. Each frame is sent as a seperate write to the connection. 
+// Typically better for very large messages where we don't want to buffer the whole message first. Also see "SendBinaryMessageBuffered"
+func (c *Connection) SendBinaryMessageStreamed(msg []byte, fs int) error {
+    frames := msgToFrames(msg, fs)
+    c.writeMx.Lock()
+    defer c.writeMx.Unlock()
+    return c.streamedWrite(frames)
+}
+
+// Sends a text message with the specified frame size. All frames of the message are first written to a buffer, 
+// then sent in a single TCP write to the connection. Also see "SendTextMessageStreamed"
+func (c *Connection) SendTextMessageBuffered(msg string, fs int) error {
+    frames := msgToFrames(msg, fs)
+    c.writeMx.Lock()
+    defer c.writeMx.Unlock()
+    return c.bufferedWrite(frames)
+}
+
+// Sends a text message with the specified frame size. Each frame is sent as a seperate write to the connection.
+// Typically better for very large messages where we don't want to buffer the whole message first. Also see "SendBinaryMessageBuffered"
+func (c *Connection) SendTextMessageStreamed(msg string, fs int) error {
+    frames := msgToFrames(msg, fs)
+    c.writeMx.Lock()
+    defer c.writeMx.Unlock()
+    return c.streamedWrite(frames)
 }
