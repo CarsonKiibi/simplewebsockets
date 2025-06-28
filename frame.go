@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -188,10 +187,6 @@ func NewFrame[T string | []byte](opcode byte, data T, isFin bool, masked bool, m
 		payload = d
 	}
 
-	if len(maskKey) > 0 {
-		masked = true
-	}
-
 	plen := len(data)
 
 	return Frame{
@@ -204,6 +199,36 @@ func NewFrame[T string | []byte](opcode byte, data T, isFin bool, masked bool, m
 	}
 }
 
+// Create closed frame with given status and reason. Some clients may reject a status of 0. Use NewEmptyCloseFrame to not give a status.
+func NewCloseFrame(status [2]byte, reason string) (Frame, error) {
+	if (len(status) + len(reason)) > 125 {
+		return Frame{}, fmt.Errorf("error: control frame (close) should not have body (status + reason) larger than 125 bytes (). ")
+	}
+    byteReason := []byte(reason)
+    body := append(status[:], byteReason...)
+    return NewFrame(0x8, body, true, false, [4]byte{}), nil
+}
+
+// Create closed frame with no body
+func NewEmptyCloseFrame() Frame {
+    return NewFrame(0x8, []byte{}, true, false, [4]byte{})
+}
+
+func NewPingFrame(body []byte) (Frame, error) {
+	if len(body) > 125 {
+		return Frame{}, fmt.Errorf("error: control frame (ping) must not have a body greater than 125 bytes")
+	}
+
+	return NewFrame(0x9, body, true, false, [4]byte{}), nil
+}
+
+func NewPongFrame(body []byte) (Frame, error) {
+	if len(body) > 125 {
+		return Frame{}, fmt.Errorf("error: control frame (pong) must not have a body greater than 125 bytes")
+	}
+
+	return NewFrame(0xA, body, true, false, [4]byte{}), nil
+}
 
 // Converts a text or binary message 
 func msgToFrames[M string | []byte](msg M, fs int) []Frame {
@@ -281,60 +306,4 @@ func msgToFrames[M string | []byte](msg M, fs int) []Frame {
     }
 
     return frames
-}
-
-// Does a buffered write to the connection with frames.
-func (c *Connection) bufferedWrite(frames []Frame) error {
-	var buf bytes.Buffer
-	for _, frame := range frames {
-		buf.Write(frame.FrameToBytes())
-	}
-	_, err := c.conn.Write(buf.Bytes())
-	return err
-}
-
-// Does a streamed write to the connection with frames.
-func (c *Connection) streamedWrite(frames []Frame) error {
-	for _, frame := range frames {
-		if _, err := c.conn.Write(frame.FrameToBytes()); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Sends a binary message with the specified frame size. All frames of the message are first written to a buffer, 
-// then sent in a single TCP write to the connection. Also see "SendBinaryMessageStreamed"
-func (c *Connection) SendBinaryMessageBuffered(msg []byte, fs int) error {
-    frames := msgToFrames(msg, fs)
-    c.writeMx.Lock()
-    defer c.writeMx.Unlock()
-    return c.bufferedWrite(frames)
-}
-
-// Sends a binary message with the specified frame size. Each frame is sent as a seperate write to the connection. 
-// Typically better for very large messages where we don't want to buffer the whole message first. Also see "SendBinaryMessageBuffered"
-func (c *Connection) SendBinaryMessageStreamed(msg []byte, fs int) error {
-    frames := msgToFrames(msg, fs)
-    c.writeMx.Lock()
-    defer c.writeMx.Unlock()
-    return c.streamedWrite(frames)
-}
-
-// Sends a text message with the specified frame size. All frames of the message are first written to a buffer, 
-// then sent in a single TCP write to the connection. Also see "SendTextMessageStreamed"
-func (c *Connection) SendTextMessageBuffered(msg string, fs int) error {
-    frames := msgToFrames(msg, fs)
-    c.writeMx.Lock()
-    defer c.writeMx.Unlock()
-    return c.bufferedWrite(frames)
-}
-
-// Sends a text message with the specified frame size. Each frame is sent as a seperate write to the connection.
-// Typically better for very large messages where we don't want to buffer the whole message first. Also see "SendBinaryMessageBuffered"
-func (c *Connection) SendTextMessageStreamed(msg string, fs int) error {
-    frames := msgToFrames(msg, fs)
-    c.writeMx.Lock()
-    defer c.writeMx.Unlock()
-    return c.streamedWrite(frames)
 }
