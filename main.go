@@ -6,14 +6,14 @@ import (
 )
 
 func main() {
-	myServer := NewServer(WithMaxMessageSize(100*1024))
+	myServer := NewServer(WithMaxMessageSize(100 * 1024))
 
 	//onConnect handler
 	myServer.OnConnect(func(c *Connection) {
 		fmt.Println("Client connected")
 
 		// onmessage handler
-		c.onMessage = func(data []byte) {
+		c.OnMessage = func(data []byte) {
 			fmt.Printf("Received message: %s\n", string(data))
 
 			// need to implement sending
@@ -21,7 +21,7 @@ func main() {
 		}
 
 		// close handler
-		c.onClose = func(reason []byte) {
+		c.OnClose = func(reason []byte) {
 			fmt.Printf("Closed for reason: %s\n", string(reason))
 		}
 	})
@@ -38,7 +38,7 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			connectionCount := myServer.GetConnectionCount()
 			fmt.Printf("[STATUS] Active connections: %d\n", connectionCount)

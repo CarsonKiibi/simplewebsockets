@@ -26,8 +26,8 @@ type Connection struct {
 	conn    net.Conn
 	writeMx sync.Mutex
 
-	onMessage func([]byte)
-	onClose   func([]byte)
+	OnMessage func([]byte)
+	OnClose   func([]byte)
 
 	readBuf    []byte
 	writeBuf   []byte
@@ -206,8 +206,8 @@ func (s *Server) processFrame(c *Connection, fr *Frame, msg *[]byte) error {
 
 	// is message complete
 	if fr.FIN && (fr.Opcode == 0x1 || fr.Opcode == 0x2 || fr.Opcode == 0x0) {
-		if c.onMessage != nil {
-			c.onMessage(*msg)
+		if c.OnMessage != nil {
+			c.OnMessage(*msg)
 		}
 		*msg = (*msg)[:0] // reset message buffer
 	}
@@ -246,8 +246,8 @@ func (s *Server) handleCloseFrame(c *Connection, fr *Frame) error {
 		c.writeMx.Unlock()
 
 		// call onClose
-		if c.onClose != nil {
-			c.onClose(fr.Payload)
+		if c.OnClose != nil {
+			c.OnClose(fr.Payload)
 		}
 
 		// call onDisconnect for clean close
@@ -261,8 +261,8 @@ func (s *Server) handleCloseFrame(c *Connection, fr *Frame) error {
 		c.closeMx.Unlock()
 
 		// call onClose callback
-		if c.onClose != nil {
-			c.onClose(fr.Payload)
+		if c.OnClose != nil {
+			c.OnClose(fr.Payload)
 		}
 
 		// call onDisconnect for clean close
