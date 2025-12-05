@@ -3,13 +3,15 @@ package main
 import (
 	"fmt"
 	"time"
+
+	simplewebsockets "github.com/CarsonKiibi/simplewebsockets"
 )
 
 func main() {
-	myServer := NewServer(WithMaxMessageSize(100 * 1024))
+	myServer := simplewebsockets.NewServer(simplewebsockets.WithMaxMessageSize(100 * 1024))
 
 	//onConnect handler
-	myServer.OnConnect(func(c *Connection) {
+	myServer.OnConnect(func(c *simplewebsockets.Connection) {
 		fmt.Println("Client connected")
 
 		// onmessage handler
@@ -26,11 +28,11 @@ func main() {
 		}
 	})
 
-	myServer.OnDisconnect(func(c *Connection) {
+	myServer.OnDisconnect(func(c *simplewebsockets.Connection) {
 		fmt.Println("Client disconnected cleanly")
 	})
 
-	myServer.OnError(func(c *Connection, err error) {
+	myServer.OnError(func(c *simplewebsockets.Connection, err error) {
 		fmt.Printf("Connection error: %v\n", err)
 	})
 
