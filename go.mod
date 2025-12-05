@@ -1,3 +1,3 @@
-module github.com/carsonkiibi/simplewebsockets
+module github.com/CarsonKiibi/simplewebsockets
 
 go 1.24.2

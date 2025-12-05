@@ -1,4 +1,4 @@
-package main
+package simplewebsockets
 
 import (
 	"bytes"
